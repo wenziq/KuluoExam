@@ -14,8 +14,74 @@ using UnityEngine.SceneManagement;
 
 namespace Sokoban.Editor
 {
+    [InitializeOnLoad]
     public static class BootScenePresentation
     {
+        private const string StartupHandled = "Sokoban.ScenePreview.StartupHandled";
+
+        static BootScenePresentation()
+        {
+            if (Application.isBatchMode) return;
+            EditorSceneManager.sceneOpened += OnSceneOpened;
+            if (!SessionState.GetBool(StartupHandled, false))
+                EditorApplication.update += ShowStartupPreview;
+        }
+
+        private static void ShowStartupPreview()
+        {
+            // A fresh checkout has neither a restored scene nor a saved Scene view camera.
+            // Wait for import and layout restoration before opening or framing anything.
+            if (EditorApplication.isCompiling || EditorApplication.isUpdating) return;
+            EditorApplication.update -= ShowStartupPreview;
+            SessionState.SetBool(StartupHandled, true);
+            if (EditorApplication.isPlayingOrWillChangePlaymode ||
+                PrefabStageUtility.GetCurrentPrefabStage() != null) return;
+            var scene = SceneManager.GetActiveScene();
+            if (scene.path != ProjectScaffold.BootScenePath)
+            {
+                // Never replace another scene or unsaved author work.
+                if (SceneManager.sceneCount != 1 || scene.isDirty || !string.IsNullOrEmpty(scene.path)) return;
+                if (AssetDatabase.LoadAssetAtPath<SceneAsset>(ProjectScaffold.BootScenePath) == null) return;
+                EditorSceneManager.OpenScene(ProjectScaffold.BootScenePath);
+            }
+            else QueuePreviewFrame();
+        }
+
+        private static void OnSceneOpened(Scene scene, OpenSceneMode mode)
+        {
+            if (mode == OpenSceneMode.Single && scene.path == ProjectScaffold.BootScenePath)
+                QueuePreviewFrame();
+        }
+
+        private static void QueuePreviewFrame()
+        {
+            EditorApplication.delayCall -= FramePreview;
+            EditorApplication.delayCall += FramePreview;
+        }
+
+        private static void FramePreview()
+        {
+            if (EditorApplication.isPlayingOrWillChangePlaymode ||
+                PrefabStageUtility.GetCurrentPrefabStage() != null) return;
+            var scene = SceneManager.GetActiveScene();
+            if (scene.path != ProjectScaffold.BootScenePath) return;
+            var preview = scene.GetRootGameObjects()
+                .FirstOrDefault(x => x.GetComponent<EditorScenePreview>() != null);
+            if (preview == null || !preview.activeInHierarchy) return;
+            var rect = preview.GetComponent<RectTransform>();
+            if (rect == null) return;
+            Canvas.ForceUpdateCanvases();
+            var corners = new Vector3[4];
+            rect.GetWorldCorners(corners);
+            var bounds = new Bounds(corners[0], Vector3.zero);
+            foreach (var corner in corners) bounds.Encapsulate(corner);
+            bounds.Expand(new Vector3(80, 80, 1));
+            var view = SceneView.lastActiveSceneView ?? EditorWindow.GetWindow<SceneView>();
+            view.in2DMode = true;
+            view.Frame(bounds, true);
+            view.Repaint();
+        }
+
         [MenuItem("Sokoban/Ensure Scene Preview")]
         public static void Refresh()
         {
