@@ -1,0 +1,28 @@
+{
+  "name": "Sokoban.EditModeTests",
+  "rootNamespace": "Sokoban.EditModeTests",
+  "references": [
+    "Sokoban.Core",
+    "Sokoban.Domain",
+    "Sokoban.Runtime",
+    "Sokoban.Editor",
+    "UnityEngine.TestRunner",
+    "UnityEditor.TestRunner"
+  ],
+  "includePlatforms": [
+    "Editor"
+  ],
+  "excludePlatforms": [],
+  "allowUnsafeCode": false,
+  "overrideReferences": true,
+  "precompiledReferences": [
+    "nunit.framework.dll",
+    "Newtonsoft.Json.dll"
+  ],
+  "autoReferenced": false,
+  "defineConstraints": [
+    "UNITY_INCLUDE_TESTS"
+  ],
+  "versionDefines": [],
+  "noEngineReferences": false
+}

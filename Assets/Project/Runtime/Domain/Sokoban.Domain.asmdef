@@ -1,0 +1,16 @@
+{
+  "name": "Sokoban.Domain",
+  "rootNamespace": "Sokoban.Domain",
+  "references": [
+    "Sokoban.Core"
+  ],
+  "includePlatforms": [],
+  "excludePlatforms": [],
+  "allowUnsafeCode": false,
+  "overrideReferences": false,
+  "precompiledReferences": [],
+  "autoReferenced": true,
+  "defineConstraints": [],
+  "versionDefines": [],
+  "noEngineReferences": true
+}
