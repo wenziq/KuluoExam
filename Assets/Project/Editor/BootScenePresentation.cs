@@ -19,6 +19,9 @@ namespace Sokoban.Editor
     {
         private const string StartupHandled = "Sokoban.ScenePreview.StartupHandled";
 
+        private static double frameDeadline;
+        private static double fittedSince;
+
         static BootScenePresentation()
         {
             if (Application.isBatchMode) return;
@@ -33,14 +36,21 @@ namespace Sokoban.Editor
             // Wait for import and layout restoration before opening or framing anything.
             if (EditorApplication.isCompiling || EditorApplication.isUpdating) return;
             EditorApplication.update -= ShowStartupPreview;
-            SessionState.SetBool(StartupHandled, true);
             if (EditorApplication.isPlayingOrWillChangePlaymode ||
-                PrefabStageUtility.GetCurrentPrefabStage() != null) return;
+                PrefabStageUtility.GetCurrentPrefabStage() != null)
+            {
+                SessionState.SetBool(StartupHandled, true);
+                return;
+            }
             var scene = SceneManager.GetActiveScene();
             if (scene.path != ProjectScaffold.BootScenePath)
             {
                 // Never replace another scene or unsaved author work.
-                if (SceneManager.sceneCount != 1 || scene.isDirty || !string.IsNullOrEmpty(scene.path)) return;
+                if (SceneManager.sceneCount != 1 || scene.isDirty || !string.IsNullOrEmpty(scene.path))
+                {
+                    SessionState.SetBool(StartupHandled, true);
+                    return;
+                }
                 if (AssetDatabase.LoadAssetAtPath<SceneAsset>(ProjectScaffold.BootScenePath) == null) return;
                 EditorSceneManager.OpenScene(ProjectScaffold.BootScenePath);
             }
@@ -55,31 +65,85 @@ namespace Sokoban.Editor
 
         private static void QueuePreviewFrame()
         {
-            EditorApplication.delayCall -= FramePreview;
-            EditorApplication.delayCall += FramePreview;
+            if (Application.isBatchMode) return;
+            fittedSince = 0;
+            frameDeadline = EditorApplication.timeSinceStartup + 30;
+            SceneView.duringSceneGui -= FitPreviewAfterLayout;
+            SceneView.duringSceneGui += FitPreviewAfterLayout;
+            EditorApplication.update -= RepaintPreview;
+            EditorApplication.update += RepaintPreview;
         }
 
-        private static void FramePreview()
+        private static void StopFraming()
         {
-            if (EditorApplication.isPlayingOrWillChangePlaymode ||
-                PrefabStageUtility.GetCurrentPrefabStage() != null) return;
+            SceneView.duringSceneGui -= FitPreviewAfterLayout;
+            EditorApplication.update -= RepaintPreview;
+            SessionState.SetBool(StartupHandled, true);
+        }
+
+        private static void RepaintPreview()
+        {
+            if (EditorApplication.isCompiling || EditorApplication.isUpdating) return;
+            if (EditorApplication.timeSinceStartup > frameDeadline ||
+                EditorApplication.isPlayingOrWillChangePlaymode ||
+                PrefabStageUtility.GetCurrentPrefabStage() != null ||
+                SceneManager.GetActiveScene().path != ProjectScaffold.BootScenePath)
+            {
+                StopFraming();
+                return;
+            }
+            var view = SceneView.lastActiveSceneView ?? EditorWindow.GetWindow<SceneView>();
+            view.Show();
+            view.Repaint();
+        }
+
+        private static void FitPreviewAfterLayout(SceneView view)
+        {
+            // Use the real rendered viewport, not the temporary dimensions during layout restore.
+            // Release control as soon as the author starts navigating the Scene view.
+            if (Event.current.type == EventType.ScrollWheel || Event.current.type == EventType.MouseDown ||
+                Event.current.type == EventType.KeyDown)
+            {
+                StopFraming();
+                return;
+            }
+            if (Event.current.type != EventType.Repaint || EditorApplication.isCompiling || EditorApplication.isUpdating)
+                return;
             var scene = SceneManager.GetActiveScene();
             if (scene.path != ProjectScaffold.BootScenePath) return;
             var preview = scene.GetRootGameObjects()
                 .FirstOrDefault(x => x.GetComponent<EditorScenePreview>() != null);
             if (preview == null || !preview.activeInHierarchy) return;
             var rect = preview.GetComponent<RectTransform>();
-            if (rect == null) return;
+            var camera = view.camera;
+            if (rect == null || camera == null || camera.pixelWidth < 64 || camera.pixelHeight < 64) return;
             Canvas.ForceUpdateCanvases();
             var corners = new Vector3[4];
             rect.GetWorldCorners(corners);
             var bounds = new Bounds(corners[0], Vector3.zero);
             foreach (var corner in corners) bounds.Encapsulate(corner);
-            bounds.Expand(new Vector3(80, 80, 1));
-            var view = SceneView.lastActiveSceneView ?? EditorWindow.GetWindow<SceneView>();
-            view.in2DMode = true;
-            view.Frame(bounds, true);
-            view.Repaint();
+            bool fits = view.in2DMode && view.orthographic && corners.All(corner =>
+            {
+                var point = camera.WorldToViewportPoint(corner);
+                return point.z > 0 && point.x >= .04f && point.x <= .96f && point.y >= .04f && point.y <= .96f;
+            });
+            // A restored view can be zoomed too far out as well as too far in.
+            float halfHeight = Mathf.Max(bounds.extents.y, bounds.extents.x / camera.aspect) * 1.12f;
+            bool correctScale = Mathf.Abs(camera.orthographicSize - halfHeight) <= halfHeight * .05f;
+            if (!fits || !correctScale)
+            {
+                fittedSince = 0;
+                view.in2DMode = true;
+                // SceneView.size is converted to camera size differently in narrow windows.
+                // Correct using the actual rendered camera on the following repaint if necessary.
+                float size = view.orthographic && camera.orthographicSize > 0
+                    ? view.size * halfHeight / camera.orthographicSize : halfHeight;
+                view.LookAt(bounds.center, Quaternion.identity, size, true, true);
+                view.Repaint();
+                return;
+            }
+            if (fittedSince == 0) fittedSince = EditorApplication.timeSinceStartup;
+            if (EditorApplication.timeSinceStartup - fittedSince >= 2) StopFraming();
         }
 
         [MenuItem("Sokoban/Ensure Scene Preview")]
