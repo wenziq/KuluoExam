@@ -63,6 +63,40 @@ namespace Sokoban.PlayModeTests
    status.Refresh(workshop.Document,workshop.Document.Snapshot().levels[0],workshop.View.State,"","草稿已保存");
    string text=rect.GetComponentInChildren<TMP_Text>().text;Assert.That(text.Split(new[]{"草稿已保存"},StringSplitOptions.None).Length-1,Is.EqualTo(1));
   }
+  [UnityTest] public IEnumerator EmptyWorkshopKeepsCompactButtonsAfterResizeAndCanCreateDraft()
+  {
+   workshop.Document.MarkSaved(workshop.Document.CurrentHash);
+   workshop.ForgetDocument(workshop.Document);
+   workshop.App.Navigate("WorkshopLibrary");
+   foreach(var size in new[]{new Vector2Int(1280,720),new Vector2Int(1920,1080),new Vector2Int(1280,960)})
+   {
+#if UNITY_EDITOR
+    UnityEditor.PlayModeWindow.SetCustomRenderingResolution((uint)size.x,(uint)size.y,"Empty workshop");
+#endif
+    yield return null;yield return null;Canvas.ForceUpdateCanvases();
+    var buttons=new[]{"EmptyCreate","EmptyCopy"}.Select(name=>root.GetComponentsInChildren<Button>().Single(b=>b.name==name)).ToArray();
+    foreach(var button in buttons)
+    {
+     var rect=(RectTransform)button.transform;
+     Assert.That(rect.rect.width,Is.EqualTo(180).Within(.1f),button.name);
+     Assert.That(rect.rect.height,Is.EqualTo(44).Within(.1f),button.name);
+     var corners=new Vector3[4];rect.GetWorldCorners(corners);
+     Assert.That(corners.All(c=>c.x>=0&&c.x<=Screen.width&&c.y>=0&&c.y<=Screen.height),Is.True,button.name+" "+size);
+    }
+    var first=(RectTransform)buttons[0].transform;var second=(RectTransform)buttons[1].transform;
+    Assert.That(second.anchoredPosition.x,Is.GreaterThan(first.anchoredPosition.x+first.rect.width));
+   }
+   root.GetComponentsInChildren<Button>().Single(b=>b.name=="EmptyCreate").onClick.Invoke();yield return null;
+   Assert.That(workshop.Document,Is.Not.Null);Assert.That(workshop.App.CurrentPage,Is.EqualTo("Workshop"));
+  }
+  [UnityTest] public IEnumerator EmptyWorkshopCanCopyExample()
+  {
+   workshop.Document.MarkSaved(workshop.Document.CurrentHash);workshop.ForgetDocument(workshop.Document);
+   workshop.App.Navigate("WorkshopLibrary");yield return null;
+   root.GetComponentsInChildren<Button>().Single(b=>b.name=="EmptyCopy").onClick.Invoke();yield return null;
+   Assert.That(workshop.Document,Is.Not.Null);Assert.That(workshop.Document.Snapshot().levels.Count,Is.GreaterThan(0));
+   Assert.That(workshop.App.CurrentPage,Is.EqualTo("Workshop"));
+  }
   [UnityTest] public IEnumerator MaxMapLongNamesAndAspectChangesKeepCellsSquareAndActionsAccessible()
   {
    for(int i=0;i<30;i++)workshop.Run(()=>LevelOperations.Add(workshop.Document));workshop.Resize(20,20);

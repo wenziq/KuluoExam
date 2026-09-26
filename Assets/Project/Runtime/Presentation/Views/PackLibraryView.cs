@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Linq;
 using Sokoban.Runtime.Persistence;
 using Sokoban.Runtime.Presentation.App;
 using Sokoban.Runtime.Presentation.Board;
@@ -42,7 +43,10 @@ namespace Sokoban.Runtime.Presentation.Views
                     }, selected == filter);
                 }
             }
-            var content = ScrollBody(240,24,366);
+            bool hasEntries = entries.Any(entry => entry.IsDraft == draftsOnly &&
+                (!filter.HasValue || filter.Value == entry.Source));
+            // Empty-state controls are not pack cards: a grid would force every button to card height.
+            var content = ScrollBody(240,24,hasEntries ? 366 : 0);
             int count = 0;
             foreach (var entry in entries)
             {
@@ -82,12 +86,14 @@ namespace Sokoban.Runtime.Presentation.Views
             }
             if (count == 0)
             {
-                var empty = UiFactory.Text("Empty", content, draftsOnly ? "这里还没有制作草稿。\n新建一份草稿，或从示例复制开始。" : "这里还没有可玩的关卡集。\n在工坊完成制作后，选择“加入可玩关卡集”。", Theme, 20);
-                UiFactory.Preferred(empty.gameObject, 100);
-                var create = UiFactory.Button("EmptyCreate", content, draftsOnly ? "新建草稿" : "前往工坊草稿", Theme, () => { if (draftsOnly) app.Command("NewPack"); else app.Navigate("WorkshopLibrary"); }, true);
-                UiFactory.Preferred(create.gameObject, 44);
-                var copy = UiFactory.Button("EmptyCopy", content, "从示例复制", Theme, () => app.Command("CopyExample"));
-                UiFactory.Preferred(copy.gameObject, 44);
+                var emptyRoot = UiFactory.Rect("EmptyState", content);
+                UiFactory.Preferred(emptyRoot.gameObject, 184);
+                var empty = UiFactory.Text("Empty", emptyRoot, draftsOnly ? "这里还没有制作草稿。\n新建一份草稿，或从示例复制开始。" : "这里还没有可玩的关卡集。\n在工坊完成制作后，选择“加入可玩关卡集”。", Theme, 20);
+                UiFactory.Fill(empty.rectTransform, 0, 84, 0, 0);
+                var create = UiFactory.Button("EmptyCreate", emptyRoot, draftsOnly ? "新建草稿" : "前往工坊草稿", Theme, () => { if (draftsOnly) app.Command("NewPack"); else app.Navigate("WorkshopLibrary"); }, true);
+                UiFactory.Place((RectTransform)create.transform, 0, 120, 180, 44);
+                var copy = UiFactory.Button("EmptyCopy", emptyRoot, "从示例复制", Theme, () => app.Command("CopyExample"));
+                UiFactory.Place((RectTransform)copy.transform, 196, 120, 180, 44);
             }
         }
         static void Right(UnityEngine.UI.Button button,float right,float top)
